@@ -94,6 +94,17 @@ With options:
 docker run -v "$(pwd)/data:/app/data" meetup-scraper "https://www.meetup.com/find/events/?keywords=python" --max-pages 5 --output python_events.json
 ```
 
+## Project Structure
+
+```
+meetup_scraper/
+├── meetup_scraper.py    # Main scraper script
+├── requirements.txt     # Project dependencies
+├── Dockerfile          # Docker configuration
+├── entrypoint.sh       # Docker entrypoint script
+└── data/              # Output directory for scraped data
+```
+
 ## Output Format
 
 The scraper generates a JSON file with the following structure:
