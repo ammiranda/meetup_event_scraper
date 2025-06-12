@@ -159,15 +159,12 @@ class MeetupScraper:
                 logger.warning(f"Could not parse date: {date}")
             date_display = time_element.text
             
-            # Get location
-            try:
-                location = event_element.find_element(By.CSS_SELECTOR, '[class*="bg-[#f5f5f5]"]').text
-            except NoSuchElementException:
-                location = "Location not specified"
-            
             # Get group name
             try:
-                group_name = event_element.find_element(By.CSS_SELECTOR, '[class*="text-primary"][class*="font-medium"]').text
+                group_element = event_element.find_element(By.CSS_SELECTOR, 'div.flex-shrink.min-w-0.truncate')
+                group_text = group_element.text
+                # Remove the "by " prefix and any leading/trailing whitespace
+                group_name = group_text.replace('by ', '', 1).strip()
             except NoSuchElementException:
                 group_name = "Group name not available"
             
@@ -199,7 +196,6 @@ class MeetupScraper:
                 'url': url,
                 'date': date,
                 'date_display': date_display,
-                'location': location,
                 'group_name': group_name,
                 'rating': rating,
                 'attendees': attendees,
