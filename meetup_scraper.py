@@ -19,6 +19,7 @@ import argparse
 import random
 from urllib.parse import urlparse, urljoin
 from pathlib import Path
+from urllib.robotparser import RobotFileParser
 
 # Configure logging
 logging.basicConfig(
@@ -33,7 +34,36 @@ class MeetupScraper:
         load_dotenv()
         self.base_url = "https://www.meetup.com"
         self.driver = None
+        self.user_agent = 'MeetupScraper/0.0.1 (https://github.com/yourusername/meetup_scraper; your@email.com)'
         self.setup_driver()
+
+    def check_robots_txt(self, url: str) -> bool:
+        """Check if we're allowed to scrape the given URL according to robots.txt."""
+        try:
+            parsed_url = urlparse(url)
+            robots_url = f"{parsed_url.scheme}://{parsed_url.netloc}/robots.txt"
+            
+            # Create a robot parser
+            rp = RobotFileParser()
+            rp.set_url(robots_url)
+            rp.read()
+            
+            # Check if we're allowed to fetch the URL
+            can_fetch = rp.can_fetch(self.user_agent, url)
+            
+            if not can_fetch:
+                logger.warning(f"Scraping not allowed for {url} according to robots.txt")
+            else:
+                # Get crawl delay if specified
+                crawl_delay = rp.crawl_delay(self.user_agent)
+                if crawl_delay:
+                    logger.info(f"Respecting crawl delay of {crawl_delay} seconds")
+                    time.sleep(crawl_delay)
+            
+            return can_fetch
+        except Exception as e:
+            logger.error(f"Error checking robots.txt: {str(e)}")
+            return False
 
     def setup_driver(self):
         """Set up the Chrome WebDriver with appropriate options."""
@@ -46,6 +76,8 @@ class MeetupScraper:
             chrome_options.add_argument('--no-sandbox')
             chrome_options.add_argument('--disable-dev-shm-usage')
             chrome_options.binary_location = '/usr/bin/chromium'
+            # Use system ChromeDriver in Docker
+            service = Service('/usr/bin/chromedriver')
         else:
             logger.info("Running in local environment")
             chrome_options.add_argument('--headless')
@@ -58,12 +90,13 @@ class MeetupScraper:
             chrome_options.add_argument('--disable-blink-features=AutomationControlled')
             chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
             chrome_options.add_experimental_option('useAutomationExtension', False)
+            # Use ChromeDriverManager only in local environment
+            service = Service(ChromeDriverManager().install())
 
         # Add user agent
-        chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        chrome_options.add_argument(f'--user-agent={self.user_agent}')
 
         # Set up the Chrome driver
-        service = Service(ChromeDriverManager().install())
         self.driver = webdriver.Chrome(service=service, options=chrome_options)
         
         # Set page load timeout
@@ -71,7 +104,7 @@ class MeetupScraper:
         
         # Execute CDP commands to prevent detection
         self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-            "userAgent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            "userAgent": self.user_agent
         })
         self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
             'source': '''
@@ -116,37 +149,47 @@ class MeetupScraper:
             # Get date information
             time_element = event_element.find_element(By.CSS_SELECTOR, 'time')
             date = time_element.get_attribute('datetime')
+            # Convert to ISO format if not already
+            try:
+                # Remove timezone info in square brackets and convert Z to +00:00
+                date = date.split('[')[0].replace('Z', '+00:00')
+                date_obj = datetime.fromisoformat(date)
+                date = date_obj.isoformat()
+            except ValueError:
+                logger.warning(f"Could not parse date: {date}")
             date_display = time_element.text
             
             # Get location
             try:
-                location = event_element.find_element(By.CSS_SELECTOR, 'p.text-sm.text-ds-neutral500').text
+                location = event_element.find_element(By.CSS_SELECTOR, '[class*="bg-[#f5f5f5]"]').text
             except NoSuchElementException:
                 location = "Location not specified"
             
             # Get group name
             try:
-                group_name = event_element.find_element(By.CSS_SELECTOR, 'p.text-sm.font-medium.text-primary').text
+                group_name = event_element.find_element(By.CSS_SELECTOR, '[class*="text-primary"][class*="font-medium"]').text
             except NoSuchElementException:
                 group_name = "Group name not available"
             
             # Get rating
             try:
-                rating_container = event_element.find_element(By.CSS_SELECTOR, 'div.flex.flex-row.text-sm.text-ds-neutral500.items-center')
+                rating_container = event_element.find_element(By.CSS_SELECTOR, '[class*="text-ds-neutral500"]')
                 rating = rating_container.find_element(By.CSS_SELECTOR, 'span').text
             except NoSuchElementException:
                 rating = "No rating"
             
             # Get attendees
             try:
-                attendees_container = event_element.find_element(By.CSS_SELECTOR, 'div.mt-1.5.flex.items-center.text-xs.font-medium.text-primary')
-                attendees = attendees_container.find_element(By.CSS_SELECTOR, 'span').text
-            except NoSuchElementException:
-                attendees = "No attendee count"
+                attendees_container = event_element.find_element(By.CSS_SELECTOR, '[class*="text-primary"][class*="text-xs"]')
+                attendees_text = attendees_container.find_element(By.CSS_SELECTOR, 'span').text
+                # Extract number from text like "46 attendees"
+                attendees = int(''.join(filter(str.isdigit, attendees_text)))
+            except (NoSuchElementException, ValueError):
+                attendees = 0
             
             # Get image URL
             try:
-                image_url = event_element.find_element(By.CSS_SELECTOR, 'img').get_attribute('src')
+                image_url = event_element.find_element(By.CSS_SELECTOR, '[class*="aspect-"] img').get_attribute('src')
             except NoSuchElementException:
                 image_url = "No image available"
             
@@ -171,6 +214,11 @@ class MeetupScraper:
         events = []
         processed_ids = set()
         
+        # Check robots.txt first
+        if not self.check_robots_txt(url):
+            logger.error("Scraping not allowed by robots.txt")
+            return events
+        
         try:
             logger.info(f"Navigating to URL: {url}")
             self.driver.get(url)
@@ -189,6 +237,9 @@ class MeetupScraper:
                 event_elements = self.driver.find_elements(By.CSS_SELECTOR, '[data-event-id]')
                 logger.info(f"Found {len(event_elements)} event elements")
                 
+                # Track if we found any new events in this scroll
+                found_new_events = False
+                
                 # Process new events
                 for event_element in event_elements:
                     event_id = event_element.get_attribute('data-event-id')
@@ -197,13 +248,14 @@ class MeetupScraper:
                         if event_info:
                             events.append(event_info)
                             processed_ids.add(event_id)
+                            found_new_events = True
                             logger.info(f"Added event: {event_info['title']}")
                 
                 logger.info(f"Total events collected so far: {len(events)}")
                 
-                # Check if we've reached the bottom
-                if len(event_elements) == 0:
-                    logger.info("No more events found, reached the bottom of the page")
+                # If no new events were found in this scroll, we've reached the end
+                if not found_new_events:
+                    logger.info("No new events found in this scroll, reached the end of available events")
                     break
                 
                 # Random delay between scrolls
