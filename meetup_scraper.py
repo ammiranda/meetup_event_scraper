@@ -186,8 +186,15 @@ class MeetupScraper:
             
             # Get image URL
             try:
-                image_url = event_element.find_element(By.CSS_SELECTOR, '[class*="aspect-"] img').get_attribute('src')
+                # Get the first image element with a meetupstatic.com URL
+                img_element = event_element.find_element(By.CSS_SELECTOR, 'img[src*="meetupstatic.com"]')
+                image_url = img_element.get_attribute('src')
+                if not image_url or not image_url.startswith('http'):
+                    image_url = "No image available"
             except NoSuchElementException:
+                image_url = "No image available"
+            except Exception as e:
+                logger.warning(f"Error extracting image URL: {str(e)}")
                 image_url = "No image available"
             
             return {
