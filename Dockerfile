@@ -1,5 +1,5 @@
-# Use Python 3.9 slim image as base
-FROM python:3.9-slim
+# Use Python 3.13 Alpine image as base
+FROM python:3.13-alpine
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -7,27 +7,34 @@ ENV PYTHONUNBUFFERED=1 \
     CHROME_VERSION=125.0.6422.113
 
 # Install system dependencies and Chrome
-RUN apt-get update && apt-get install -y \
+RUN apk add --no-cache \
     wget \
     gnupg \
     unzip \
     xvfb \
     curl \
     chromium \
-    chromium-driver \
-    && rm -rf /var/lib/apt/lists/*
+    chromium-chromedriver \
+    build-base \
+    python3-dev \
+    musl-dev \
+    libffi-dev \
+    openssl-dev
 
 # Set Chrome binary location
-ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROME_BIN=/usr/bin/chromium-browser
 
 # Set up working directory
 WORKDIR /app
 
+# Install uv
+RUN pip install uv
+
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies using uv
+RUN uv pip install --no-cache --system -r requirements.txt
 
 # Copy the rest of the application
 COPY . .
@@ -35,8 +42,5 @@ COPY . .
 # Create data directory
 RUN mkdir -p data
 
-# Make the entrypoint script executable
-RUN chmod +x entrypoint.sh
-
-# Use entrypoint script
-ENTRYPOINT ["./entrypoint.sh"] 
+# Set the entrypoint to run the scraper
+ENTRYPOINT ["python", "meetup_scraper.py"] 

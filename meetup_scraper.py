@@ -95,12 +95,21 @@ class MeetupScraper:
 
         # Add user agent
         chrome_options.add_argument(f'--user-agent={self.user_agent}')
-
+        
+        # Add options for better Docker termination
+        chrome_options.add_argument('--disable-background-timer-throttling')
+        chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+        chrome_options.add_argument('--disable-renderer-backgrounding')
+        chrome_options.add_argument('--disable-features=TranslateUI')
+        chrome_options.add_argument('--disable-ipc-flooding-protection')
+        
         # Set up the Chrome driver
         self.driver = webdriver.Chrome(service=service, options=chrome_options)
         
         # Set page load timeout
         self.driver.set_page_load_timeout(30)
+        self.driver.implicitly_wait(10)
+        self.driver.set_script_timeout(30)
         
         # Execute CDP commands to prevent detection
         self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {
@@ -226,46 +235,57 @@ class MeetupScraper:
             logger.info(f"Navigating to URL: {url}")
             self.driver.get(url)
             
-            # Wait for initial page load
+            # Wait for initial page load with timeout
             time.sleep(random.uniform(2, 4))
             
             for page in range(max_pages):
                 logger.info(f"Scrolling page {page + 1}/{max_pages}")
                 
-                # Scroll down
-                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(random.uniform(2, 4))  # Wait for content to load
-                
-                # Find all event elements
-                event_elements = self.driver.find_elements(By.CSS_SELECTOR, '[data-event-id]')
-                logger.info(f"Found {len(event_elements)} event elements")
-                
-                # Track if we found any new events in this scroll
-                found_new_events = False
-                
-                # Process new events
-                for event_element in event_elements:
-                    event_id = event_element.get_attribute('data-event-id')
-                    if event_id not in processed_ids:
-                        event_info = self.extract_event_info(event_element)
-                        if event_info:
-                            events.append(event_info)
-                            processed_ids.add(event_id)
-                            found_new_events = True
-                            logger.info(f"Added event: {event_info['title']}")
-                
-                logger.info(f"Total events collected so far: {len(events)}")
-                
-                # If no new events were found in this scroll, we've reached the end
-                if not found_new_events:
-                    logger.info("No new events found in this scroll, reached the end of available events")
+                try:
+                    # Scroll down with timeout
+                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                    time.sleep(random.uniform(2, 4))  # Wait for content to load
+                    
+                    # Find all event elements with timeout
+                    event_elements = self.driver.find_elements(By.CSS_SELECTOR, '[data-event-id]')
+                    logger.info(f"Found {len(event_elements)} event elements")
+                    
+                    # Track if we found any new events in this scroll
+                    found_new_events = False
+                    
+                    # Process new events
+                    for event_element in event_elements:
+                        try:
+                            event_id = event_element.get_attribute('data-event-id')
+                            if event_id not in processed_ids:
+                                event_info = self.extract_event_info(event_element)
+                                if event_info:
+                                    events.append(event_info)
+                                    processed_ids.add(event_id)
+                                    found_new_events = True
+                                    logger.info(f"Added event: {event_info['title']}")
+                        except Exception as e:
+                            logger.warning(f"Error processing event element: {str(e)}")
+                            continue
+                    
+                    logger.info(f"Total events collected so far: {len(events)}")
+                    
+                    # If no new events were found in this scroll, we've reached the end
+                    if not found_new_events:
+                        logger.info("No new events found in this scroll, reached the end of available events")
+                        break
+                    
+                    # Random delay between scrolls
+                    time.sleep(random.uniform(1, 3))
+                    
+                except Exception as e:
+                    logger.error(f"Error during page {page + 1}: {str(e)}")
                     break
-                
-                # Random delay between scrolls
-                time.sleep(random.uniform(1, 3))
             
         except Exception as e:
             logger.error(f"Error during scraping: {str(e)}")
+        finally:
+            logger.info(f"Scraping completed. Total events collected: {len(events)}")
         
         return events
 
@@ -288,7 +308,14 @@ class MeetupScraper:
     def close(self):
         """Close the WebDriver."""
         if self.driver:
-            self.driver.quit()
+            try:
+                logger.info("Closing WebDriver...")
+                self.driver.quit()
+                logger.info("WebDriver closed successfully")
+            except Exception as e:
+                logger.warning(f"Error closing WebDriver: {str(e)}")
+            finally:
+                self.driver = None
 
 def main():
     parser = argparse.ArgumentParser(description='Scrape Meetup events from a search URL')
@@ -304,6 +331,10 @@ def main():
     try:
         events = scraper.scrape_events(args.url, args.max_pages)
         scraper.save_events(events, args.output)
+        logger.info("Script completed successfully")
+    except Exception as e:
+        logger.error(f"Script failed with error: {str(e)}")
+        raise
     finally:
         scraper.close()
 
