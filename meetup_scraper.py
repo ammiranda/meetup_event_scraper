@@ -221,7 +221,7 @@ class MeetupScraper:
             logger.error(f"Error extracting event info: {str(e)}")
             return None
 
-    def scrape_events(self, url: str, max_pages: int = 3) -> List[Dict[str, Any]]:
+    def scrape_events(self, url: str, max_pages: int = 3, exhaustive: bool = False) -> List[Dict[str, Any]]:
         """Scrape events from the given URL."""
         events = []
         processed_ids = set()
@@ -237,9 +237,17 @@ class MeetupScraper:
             
             # Wait for initial page load with timeout
             time.sleep(random.uniform(2, 4))
-            
-            for page in range(max_pages):
-                logger.info(f"Scrolling page {page + 1}/{max_pages}")
+
+            page = 0
+
+            while True:
+                if not exhaustive and page >= max_pages:
+                    break
+                
+                if exhaustive:
+                    logger.info(f"Scrolling page {page + 1}")
+                else:
+                    logger.info(f"Scrolling page {page + 1}/{max_pages}")
                 
                 try:
                     # Scroll down with timeout
@@ -277,6 +285,7 @@ class MeetupScraper:
                     
                     # Random delay between scrolls
                     time.sleep(random.uniform(1, 3))
+                    page += 1
                     
                 except Exception as e:
                     logger.error(f"Error during page {page + 1}: {str(e)}")
@@ -324,12 +333,14 @@ def main():
                       help='Maximum number of scrolls to perform (default: 3)')
     parser.add_argument('--output', '-o', default='events.json',
                       help='Output filename (default: events.json)')
+    parser.add_argument('--exhaustive', '-e', action='store_true',
+                        help='Scrape all events on the page')
     
     args = parser.parse_args()
     
     scraper = MeetupScraper()
     try:
-        events = scraper.scrape_events(args.url, args.max_pages)
+        events = scraper.scrape_events(args.url, args.max_pages, args.exhaustive)
         scraper.save_events(events, args.output)
         logger.info("Script completed successfully")
     except Exception as e:

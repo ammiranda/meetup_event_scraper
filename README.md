@@ -61,11 +61,22 @@ python meetup_scraper.py "https://www.meetup.com/find/events/?keywords=python"
 - `url`: The Meetup events search URL to scrape (required)
 - `--max-pages`, `-m`: Maximum number of scrolls to perform (default: 3)
 - `--output`, `-o`: Output filename (default: events.json)
+- `--exhaustive`, `-e`: Scrape exhaustively until no more new events are found (overrides --max-pages)
 
 Example with options:
 ```bash
 python meetup_scraper.py "https://www.meetup.com/find/events/?keywords=python" --max-pages 5 --output python_events.json
 ```
+
+#### Exhaustive Scraping
+
+To scrape all available events (not just a limited number of scrolls), use the `--exhaustive` or `-e` flag:
+
+```bash
+python meetup_scraper.py "https://www.meetup.com/find/events/?keywords=python" --exhaustive
+```
+
+This will keep scrolling and scraping until no new events are found, regardless of the `--max-pages` value.
 
 ### Example URLs
 
