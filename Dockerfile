@@ -8,18 +8,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 # Install system dependencies and Chrome
 RUN apk add --no-cache \
-    wget \
-    gnupg \
-    unzip \
-    xvfb \
     curl \
     chromium \
     chromium-chromedriver \
-    build-base \
-    python3-dev \
-    musl-dev \
-    libffi-dev \
-    openssl-dev
+    bash
 
 # Set Chrome binary location
 ENV CHROME_BIN=/usr/bin/chromium-browser
@@ -27,11 +19,11 @@ ENV CHROME_BIN=/usr/bin/chromium-browser
 # Set up working directory
 WORKDIR /app
 
-# Install uv
-RUN pip install uv
-
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
+
+# Install uv
+RUN pip install --no-cache-dir uv
 
 # Install Python dependencies using uv
 RUN uv pip install --no-cache --system -r requirements.txt

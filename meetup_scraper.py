@@ -1,28 +1,28 @@
-import os
 from datetime import datetime
 from typing import List, Dict, Optional, Any
-import requests
-from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager
 from dotenv import load_dotenv
+import os
+import sys
 import logging
 import time
 import json
 import argparse
 import random
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse
 from pathlib import Path
 from urllib.robotparser import RobotFileParser
 
 # Configure logging
 logging.basicConfig(
+    stream=sys.stdout,
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
@@ -70,12 +70,12 @@ class MeetupScraper:
         chrome_options = Options()
         
         # Check if running in Docker
-        if Path('/.dockerenv').exists():
+        if os.path.exists('/usr/bin/chromedriver'):
             logger.info("Running in Docker environment")
             chrome_options.add_argument('--headless')
             chrome_options.add_argument('--no-sandbox')
             chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.binary_location = '/usr/bin/chromium'
+            chrome_options.binary_location = '/usr/bin/chromium-browser'
             # Use system ChromeDriver in Docker
             service = Service('/usr/bin/chromedriver')
         else:
@@ -302,7 +302,7 @@ class MeetupScraper:
         """Save events to a JSON file."""
         try:
             # Create data directory if it doesn't exist
-            data_dir = Path("data")
+            data_dir = Path("/data")
             data_dir.mkdir(exist_ok=True)
             
             # Save to file
