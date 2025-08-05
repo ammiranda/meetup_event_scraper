@@ -97,12 +97,12 @@ docker build -t meetup-scraper .
 
 Basic usage:
 ```bash
-docker run -v "$(pwd)/data:/app/data" meetup-scraper "https://www.meetup.com/find/events/?keywords=python"
+docker run -v "$(pwd)/data:/data" meetup-scraper "https://www.meetup.com/find/events/?keywords=python"
 ```
 
 With options:
 ```bash
-docker run -v "$(pwd)/data:/app/data" meetup-scraper "https://www.meetup.com/find/events/?keywords=python" --max-pages 5 --output python_events.json
+docker run -v "$(pwd)/data:/data" meetup-scraper "https://www.meetup.com/find/events/?keywords=python" --max-pages 5 --output python_events.json
 ```
 
 ## Project Structure
